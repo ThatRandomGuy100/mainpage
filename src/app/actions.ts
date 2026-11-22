@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { accessRequestHtml, accessRequestSubject, accessRequestText } from "@/lib/access-request-email";
 import { sendEmail } from "@/lib/email";
 import { COMPANY, SERVICE_IDS, serviceName } from "@/lib/services";
 
@@ -27,9 +28,6 @@ export type RequestAccessState =
       fieldErrors?: Partial<Record<keyof z.infer<typeof schema>, string>>;
       values?: Record<string, string | string[]>;
     };
-
-const escape = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export async function requestAccess(
   _prev: RequestAccessState,
@@ -78,45 +76,14 @@ export async function requestAccess(
     };
   }
 
-  const serviceList = services.map(serviceName);
-  const rows: [string, string][] = [
-    ["Name", name],
-    ["Organization", organization],
-    ["Phone", phone],
-    ["Email", email],
-    ["Wants access to", serviceList.join(", ")],
-  ];
+  const request = { name, organization, phone, email, services: services.map(serviceName) };
 
   const result = await sendEmail({
     to,
     replyTo: email,
-    subject: `Access request: ${organization} (${serviceList.join(", ")})`,
-    text: [
-      "New access request from the Precision RCM landing page.",
-      "",
-      ...rows.map(([k, v]) => `${k}: ${v}`),
-      "",
-      "Reply to this email to reach the requester directly.",
-    ].join("\n"),
-    html: `
-      <div style="font-family:Arial,sans-serif;color:#0D1B2E;max-width:560px">
-        <h2 style="margin:0 0 4px">New access request</h2>
-        <p style="margin:0 0 20px;color:#5B6472">From the Precision RCM landing page.</p>
-        <table style="border-collapse:collapse;width:100%">
-          ${rows
-            .map(
-              ([k, v]) => `<tr>
-                <td style="padding:8px 12px 8px 0;color:#5B6472;white-space:nowrap;vertical-align:top">${k}</td>
-                <td style="padding:8px 0;font-weight:600">${escape(v)}</td>
-              </tr>`,
-            )
-            .join("")}
-        </table>
-        <p style="margin:24px 0 0;color:#5B6472;font-size:13px">
-          Reply to this email to reach ${escape(name)} directly. Turn the requested tools on for
-          this organization in the database once you've spoken to them.
-        </p>
-      </div>`,
+    subject: accessRequestSubject(request),
+    text: accessRequestText(request),
+    html: accessRequestHtml(request),
   });
 
   if (!result.ok) {
